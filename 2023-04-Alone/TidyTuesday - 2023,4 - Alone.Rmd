@@ -1,0 +1,406 @@
+---
+title: "TidyTuesday - 2023,4 - Alone"
+author: "Kainalytics"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    highlight: espresso
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load dependencies
+```{r}
+library(tidytuesdayR)
+library(tidyverse)
+library(showtext)
+library(artyfarty)
+library(scales)
+
+# source('appearances.R')
+
+font_add_google('Coda', 'coda')
+font_add_google('Red Rose', 'redrose')
+font_add_google('Sniglet', 'sniglet')
+showtext_auto()
+theme_set(artyfarty::theme_five38() +
+            theme(panel.background = element_rect(fill ='#e6e6e6'),
+                  plot.background = element_rect(fill = '#e6e6e6'),
+                  text = element_text(family = 'sniglet'),
+                  plot.title = element_text(hjust = 0),
+                  plot.subtitle = element_text(color = '#5c5c5c')))
+```
+
+# Downloading Data
+
+```{r}
+# Download Data
+tuesdata <- tt_load(2023, week = 4)
+```
+
+# Reading Data
+
+## How should we read data? One wat is to just press $ and see what comes up and then store it in the relevant name. A bit hacky, but yeah, speed is key. We don't want to waste time. 
+
+```{r}
+
+survivalists <- tuesdata$survivalists
+loadouts <- tuesdata$loadouts
+episodes <- tuesdata$episodes
+seasons <- tuesdata$seasons
+```
+
+## Now let's have a look at the data 
+```{r}
+survivalists
+```
+### This has 84 observations and 16 columns. Not a very long dataset, but the wider a data set usually is the more difficult it is to clean and think about in my opinion. This being my first TT dataset, I wanted it to be a bit easier than 
+that, but meh, let's go. 
+
+### Exploring survivalists.csv
+```{r}
+glimpse(survivalists)
+```
+
+Okay, so we can see we have:
+`Season` which we can group by and see the progression of observations if any. 
+`Name`, which seems like a participant name. 
+
+And then we have a bunch of participant attributes -  `age`, `gender`,`city` and `state.` 
+
+Then we have `result` - which I guess is their final position in the season. 
+
+I'll check it in the data dictionary in a minute but guessing from the next 
+column i.e. days lasted, I think that makes sense. 
+
+Then there's a binary column `medically_evacuated` which tells us whether a 
+medical evacuation was 
+required or not. 
+
+We also have `reason_tapped_out` column that is a commentary on the reason they
+exited. And then what seems to be a cleaned version of that column called 
+`reason_category`. 
+
+Then there's `team` and `days_linked_up` which seems like a bunch of NAs in this
+glimpse but considering `days_linked_up` has a <dbl> tag, means its numeric. 
+
+Then finally we have `profession` and `url`. 
+
+### Let's have a look at each column in this dataset and see what we can do with it. 
+```{r}
+survivalists %>% 
+  count(season)
+```
+Seems like we have 9 seasons in total and 10 observations each for each of them,
+Except in Season 4 which has 14. 
+
+#### Name
+```{r}
+survivalists %>% 
+  count(name)
+
+survivalists %>% 
+  count(name, sort = T) 
+
+survivalists %>% 
+  count(name, sort = T) %>% 
+  filter(n > 1) 
+```
+##### 84 total participants and 10 of them are repeated. Let's see if these are duplicate records or if they appeared in different seasons. 
+
+```{r}
+reappearing_survivalists <- survivalists %>% 
+  count(name, sort = T) %>% 
+  filter(n > 1) %>% 
+  pull(name)
+
+survivalists %>% 
+  filter(name %in% reappearing_survivalists) %>% 
+  select(name, season) %>% 
+  arrange(name)
+```
+
+##### Alright so these are obviously not duplicate records, but survivalists who took part in multiple seasons of the show. Alright, I think we should add a column identifying them as such. 
+
+#### Add column identifying reappearing survivalists
+```{r}
+survivalists <- survivalists %>% 
+  mutate(isReappearing = case_when(name %in% reappearing_survivalists ~ T, 
+                                   TRUE ~ F)) 
+# %>% 
+  # select(season, name, isReappearing)
+```
+
+#### Age
+
+##### Best way to see a numeric column is usually with a distribution, let's try that.
+```{r warning=FALSE}
+survivalists %>% 
+  ggplot(aes(x = age)) +
+  geom_bar(position = 'dodge2') +
+  labs(title = 'Distribution of Participant Age',
+       subtitle = 'Alone | Data Courtesy: TidyTuesday',
+       x = 'Age',
+       y = 'Frequency') +
+  scale_x_continuous(breaks = label_dollar())+
+  scale_fill_manual(values = pal('five38'))
+  # annotate(geom = 'text', label = '@sachasucha', x = 9, y = 20)
+```
+
+##### Let's describe the data set a bit, and while we're at it we can look at the data by season
+
+```{r}
+survivalists %>% 
+  group_by(season) %>% 
+  summarise(count = n(),
+            average_age = mean(age),
+            median_age = median(age),
+            stdev_age = sd(age))
+```
+
+So we can see that the median and mean ages are quite close to each other, which indicates not much of a skew in the distribution. 
+
+We can make a plot of this I guess even though it doesn't seem very interesting. 
+
+##### Plot Age distribution by season
+```{r warning=F}
+survivalists %>% 
+  ggplot(aes(x = season, y = age, group = season)) +
+  geom_boxplot(outlier.size = 3) +
+  geom_line(aes(x = season, y = mean(age)), linewidth = 10) +
+  labs(title = 'Distribution of Participant Age by Season',
+       subtitle = 'Alone | Data Courtesy: TidyTuesday',
+       x = 'Season',
+       y = 'Age') +
+  scale_x_continuous(breaks = c(1:10)) +
+  annotate(geom = 'text', label = '@sachasucha', x = 9, y = 20)
+```
+
+
+#### Gender
+
+```{r}
+survivalists %>% 
+  ggplot(aes(x = gender, fill = gender)) +
+  geom_bar() +
+  labs(title = 'Distribution of Participant Age by Season',
+       subtitle = 'Alone | Data Courtesy: TidyTuesday',
+       x = 'Season',
+       y = 'Age') +
+  scale_y_continuous(breaks = seq(0, 100, by = 10)) +
+  # annotate(geom = 'text', label = '@sachasucha', x = 2, y = 100) +
+  theme(legend.position = 'none') +
+  scale_fill_manual(values = pal('five38'))
+```
+
+
+#### City
+
+```{r}
+survivalists %>% 
+  count(city, sort = T)
+```
+
+
+#### State
+
+```{r}
+survivalists %>% 
+  count(state, sort = T)
+```
+
+
+#### Country
+
+```{r}
+survivalists %>% 
+  count(country, sort = T)
+```
+
+
+#### Reason Category
+
+```{r}
+survivalists %>% 
+  count(reason_category, sort = T)
+```
+
+#### Profession
+
+```{r}
+survivalists %>% 
+  count(profession, sort = T)
+```
+
+#### Day Linked Up
+
+```{r}
+survivalists %>% 
+  count(day_linked_up, sort = T)
+```
+
+
+#### TODO: US Map showing where all participants came from - learn to use plotly.
+
+### Exploring loadouts.csv
+```{r}
+loadouts %>% 
+  glimpse()
+```
+Seems like it has a version - US is visible in glimpse() and maybe there are other versions of the show. 
+
+Then there's season, of which we saw there were 9 in the survivalists dataset.
+
+Name, possibly of the participant as in the survivalists dataset. 
+
+Then we come to the actual loadouts - what the participants were carrying with them in that season, I can see that they go from 1 to 10 and then start again, so it looks like each participant gets to carry 10 things, and 10 things for 10 people per season is 100 things so I should expect 100 count per season for all seasons except S4 which we saw had 14 participants = 14 * 10 = 140. 
+
+Next Up is `item_detailed` and `item`. Pretty self explanatory 
+
+
+
+#### Version
+```{r}
+loadouts %>% 
+  count(version)
+```
+
+Meh, everything is the US version. 
+
+#### Season
+```{r}
+loadouts %>% 
+  count(season)
+```
+
+#### Name
+```{r}
+loadouts %>% 
+  count(name, season)
+```
+So Brad Richardson is in 2 seasons: 4 and 5. 
+
+#### `item_detailed`
+```{r}
+loadouts %>% 
+  count(`item_detailed`, sort = T)
+
+loadouts %>% 
+  mutate(item_detailed = fct_lump(item_detailed, n = 10)) %>% 
+  filter(item_detailed != 'Other') %>% 
+  ggplot(aes(item_detailed, fill = item_detailed)) +
+  geom_histogram(stat = 'count') +
+  coord_flip() +
+  theme(legend.position = 'none')
+```
+
+#### Item
+
+```{r}
+loadouts %>% 
+  count(`item`, sort = T)
+```
+
+##### Plotting most common items in loadouts across all seasons.
+```{r}
+loadouts %>% 
+  mutate(item = fct_lump(item, n = 10)) %>% 
+  group_by(item) %>% 
+  summarise(count = n()) %>% 
+  filter(item != 'Other') %>%
+  mutate(item = fct_reorder(item, count)) %>% 
+  ggplot(aes(item, count, fill = item)) +
+  geom_col() +
+  coord_flip() +
+  theme(legend.position = 'none') +
+  labs(title = 'Most Common Items carried by participants',
+       subtitle = 'Alone | All Seasons',
+       x = '',
+       y = 'Frequency') +
+  # scale_x_continuous(breaks = seq(0, 100, by = 10)) +
+  annotate(geom = 'text', label = '@sachasucha', x = 6, y = 75, 
+           color = '#5e5e5e', alpha = 0.25, size = 5) +
+  theme(legend.position = 'none') 
+  
+```
+
+
+### Exploring episodes.csv
+```{r}
+episodes %>% 
+  glimpse()
+```
+
+
+### Exploring seasons.csv
+```{r}
+seasons %>% 
+  glimpse()
+```
+
+
+Viewing all datasets again to find some interesting comparisons
+```{r}
+glimpse(survivalists)
+glimpse(loadouts)
+glimpse(episodes)
+glimpse(seasons)
+```
+
+## Where do the toughest survivalists tend to come from?
+```{r}
+colors_palette <- pal('flat')
+
+survivalists %>% 
+  mutate(state = fct_lump(state, 10)) %>% 
+  # filter(state != 'Other') %>% 
+  drop_na(state) %>% 
+  mutate(state = toupper(state),
+         state = fct_reorder(state, days_lasted, .fun = mean)) %>% 
+  group_by(state) %>% 
+  mutate(mean_days_lasted = mean(days_lasted)) %>% 
+  ggplot(aes(state, days_lasted)) + 
+  geom_boxplot(
+    outlier.shape = 2,
+    col = colors_palette[6],
+    fill = colors_palette[3],
+    linewidth = .75
+  )+
+  geom_point(aes(y = mean_days_lasted, x = state), size = 3, 
+             color = 'black',
+             shape = 10)+
+  coord_flip() +
+  labs(title = 'Where do the toughest Survivalists come from?',
+       subtitle = 'Alone | All Seasons | Canadians eh',
+       x = '',
+       y = 'Days Lasted',
+       caption= "The data this week comes from the Alone data package by Dan Oehm.\nThis dataset contains data from the TV series Alone collected and shared by Dan Oehm. \nAs described in Oehm's blog post, in the survival TV series ‘Alone,’ 10 survivalists are dropped in an extremely remote area and must fend for themselves. \nThey aim to last 100 days in the Artic winter, living off the land through their survival skills, endurance, and mental fortitude.\n Analysis: @sachasucha") +
+  scale_alpha_binned(breaks = seq(0, 100, by = 10)) +
+  annotate(geom = 'text', label = '@sachasucha', x = 6, y = 75, 
+           color = '#5e5e5e', alpha = 0.25, size = 5) +
+  theme(legend.position = 'none') 
+
+survivalists %>% 
+  mutate(state = fct_lump(state, 10)) %>% 
+  filter(state != 'Other') %>% 
+  drop_na(state) %>%
+  group_by(state) %>% 
+  summarise(count = n(),
+            mean = mean(days_lasted)) %>% 
+  arrange(desc(mean)) +
+  geom_point(aes(x = mean()))
+```
+
+# Alt text for Twitter
+Plot title: "Where do the toughest Survivalists come from?"
+Subtitle:Alone | Top 10 States | Canadians eh.
+Tag: #TidyTuesday | Data: Alone | @_jcken
+
+
+Box Plot showing the showing the distribution of days survived by survivalists by State they come from in all seasons of "Alone". Top bar is British Columbia, bottom is Illinois. Range of x axis is 0-100. Note that only the top 10 states have been analyzed. The widest distribution appears to be from Alaska.
+
+Plot is themed in a flat style palette. Plot background is a light grey whereas all text is in black and the box plots are yellow with blue borders.
+
