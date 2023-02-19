@@ -20,7 +20,6 @@ library(showtext)
 library(artyfarty)
 library(scales)
 
-# source('appearances.R')
 
 font_add_google('Coda', 'coda')
 font_add_google('Red Rose', 'redrose')
